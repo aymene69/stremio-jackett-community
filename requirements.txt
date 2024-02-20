@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+starlette
+requests
+bencode.py
+jinja2
