@@ -50,7 +50,7 @@ async def get_manifest():
     return {
         "id": "community.aymene69.jackett",
         "icon": "https://i.imgur.com/tVjqEJP.png",
-        "version": "3.0.0",
+        "version": "3.0.6",
         "catalogs": [],
         "resources": ["stream"],
         "types": ["movie", "series"],
@@ -147,11 +147,3 @@ async def get_playback(config: str, query: str, title: str):
     except Exception as e:
         print(f"An error occurred: {e}")
         raise HTTPException(status_code=500, detail="An error occurred while processing the request.")
-
-@app.get("/{config}/nocache")
-async def get_nocache():
-    return FileResponse("nocache.mp4", media_type="video/mp4")
-
-@app.get("/nocache")
-async def get_nocache():
-    return FileResponse("nocache.mp4", media_type="video/mp4")
