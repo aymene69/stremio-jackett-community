@@ -6,6 +6,7 @@ import concurrent.futures
 
 format = [".mkv", ".mp4", ".avi", ".mov", ".flv", ".wmv", ".webm", ".mpg", ".mpeg", ".m4v", ".3gp", ".3g2", ".ogv", ".ogg", ".drc", ".gif", ".gifv", ".mng", ".avi", ".mov", ".qt", ".wmv", ".yuv", ".rm", ".rmvb", ".asf", ".amv", ".mp4", ".m4p", ".m4v", ".mpg", ".mp2", ".mpeg", ".mpe", ".mpv", ".mpg", ".mpeg", ".m2v", ".m4v", ".svi", ".3gp", ".3g2", ".mxf", ".roq", ".nsv", ".flv", ".f4v", ".f4p", ".f4a", ".f4b"]
 
+max_retries = 5
 
 def get_availability_cached(stream, type, seasonEpisode=None, config=None):
     if config["service"] == "realdebrid":
@@ -34,6 +35,9 @@ def get_availability_cached(stream, type, seasonEpisode=None, config=None):
             'debridKey'] + "&magnets[]=" + stream['magnet']
         response = requests.get(url)
         data = response.json()
+        if data['status'] == "error":
+            if data['error']['code'] == "AUTH_BLOCKED":
+                return "AUTH_BLOCKED"
         if data["data"]["magnets"][0]["instant"]:
             if type == "movie":
                 return True
@@ -116,9 +120,15 @@ def get_torrent_info(item, config):
         return torrent_info
     response = requests.get(item['link'])
     print("Getting torrent info")
-    while response.status_code != 200:
+    attempts = 0
+    while response.status_code != 200 and attempts < max_retries:
         print("Retrying")
         response = requests.get(item['link'])
+        attempts += 1
+    if response.status_code == 200:
+        print("Successfully retrieved torrent info")
+    else:
+        print("Failed to retrieve torrent info after", max_retries, "attempts")
     print("Got torrent info")
     torrent = bencode.bdecode(response.content)
     trackers = []
@@ -139,11 +149,11 @@ def get_torrent_info(item, config):
     try:
         season = item['season']
         episode = item['episode']
-        availability = is_available(magnet, item['type'], item['season'] + item['episode'], config)
+        availability = is_available(magnet, item['type'], item['season'] + item['episode'], config=config)
     except:
         season = None
         episode = None
-        availability = is_available(magnet, item['type'], config)
+        availability = is_available(magnet, item['type'], config=config)
     torrent_info = {
         "name": item['name'],
         "title": item['title'],

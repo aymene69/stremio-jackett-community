@@ -52,6 +52,9 @@ def get_emoji(language):
         "de": "🇩🇪",
         "it": "🇮🇹",
         "pt": "🇵🇹",
+        "ru": "🇷🇺",
+        "in": "🇮🇳",
+        "nl": "🇳🇱",
         "multi": "🌍"
     }
     return emoji_dict.get(language, "🇬🇧")
@@ -64,7 +67,10 @@ def detect_language(torrent_name):
         "es": r'\b(SPANISH|ES|ESP)\b',
         "de": r'\b(GERMAN|DE|GER)\b',
         "it": r'\b(ITALIAN|IT|ITA)\b',
-        "pt": r'\b(PORTUGUESE|PT|POR)\b'
+        "pt": r'\b(PORTUGUESE|PT|POR)\b',
+        "ru": r'\b(RUSSIAN|RU|RUS)\b',
+        "in": r'\b(INDIAN|IN|HINDI|TELUGU|TAMIL|KANNADA|MALAYALAM|PUNJABI|MARATHI|BENGALI|GUJARATI|URDU|ODIA|ASSAMESE|KONKANI|MANIPURI|NEPALI|SANSKRIT|SINHALA|SINDHI|TIBETAN|BHOJPURI|DHIVEHI|KASHMIRI|KURUKH|MAITHILI|NEWARI|RAJASTHANI|SANTALI|SINDHI|TULU)\b',
+        "nl": r'\b(DUTCH|NL|NLD)\b',
     }
 
     for language, pattern in language_patterns.items():
@@ -95,6 +101,11 @@ def parse_xml(xml_content, query, config):
                             namespaces={'torznab': 'http://torznab.com/schemas/2015/feed'}).attrib['value']
         if seeders == "0":
             continue
+        try:
+            if query['season'] not in title:
+                continue
+        except:
+            pass
         item_dict = {}
         if query['type'] == "movie":
             item_dict = {

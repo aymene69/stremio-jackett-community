@@ -10,9 +10,10 @@ from fastapi.templating import Jinja2Templates
 
 import starlette.status as status
 
-from utils.filter_results import filter_items
+from constants import NO_RESULTS
 from utils.get_content import get_name
 from utils.get_cached import search_cache
+from utils.filter_results import filter_items
 from utils.process_results import process_results
 
 from debrid.realdebrid import get_stream_link_rd
@@ -50,7 +51,7 @@ async def get_manifest():
     return {
         "id": "community.aymene69.jackett",
         "icon": "https://i.imgur.com/tVjqEJP.png",
-        "version": "3.0.6",
+        "version": "3.0.8",
         "catalogs": [],
         "resources": ["stream"],
         "types": ["movie", "series"],
@@ -83,10 +84,10 @@ async def get_results(config: str, stream_type: str, stream_id: str):
             print("Processed cached results")
             if len(stream_list) == 0:
                 print("No results found")
-                return {"streams": [{"url": "#", "title": "No results found"}]}
+                return NO_RESULTS
             return {"streams": stream_list}
         else:
-            return {"streams": [{"url": "#", "title": "No results found"}]}
+            return NO_RESULTS
     if stream_type == "series":
         print("Series request")
         print("Getting name and properties")
@@ -105,7 +106,7 @@ async def get_results(config: str, stream_type: str, stream_id: str):
                 print("Processed cached results")
                 if len(stream_list) == 0:
                     print("No results found")
-                    return {"streams": [{"url": "#", "title": "No results found"}]}
+                    return NO_RESULTS
                 return {"streams": stream_list}
             else:
                 print("Processing cached results")
@@ -114,13 +115,42 @@ async def get_results(config: str, stream_type: str, stream_id: str):
                 print("Processed cached results")
                 if len(stream_list) == 0:
                     print("No results found")
-                    return {"streams": [{"url": "#", "title": "No results found"}]}
+                    return NO_RESULTS
                 return {"streams": stream_list}
         else:
-            return {"streams": [{"url": "#", "title": "No results found"}]}
+            return NO_RESULTS
 
 
 @app.get("/{config}/playback/{query}/{title}")
+async def get_playback(config: str, query: str, title: str):
+    try:
+        if not query or not title:
+            raise HTTPException(status_code=400, detail="Query and title are required.")
+        config = json.loads(base64.b64decode(config).decode('utf-8'))
+        print("Decoding query")
+        query = base64.b64decode(query).decode('utf-8')
+        print(query)
+        print("Decoded query")
+
+        service = config['service']
+        if service == "realdebrid":
+            print("Getting Real-Debrid link")
+            link = get_stream_link_rd(query, config=config)
+        elif service == "alldebrid":
+            print("Getting All-Debrid link")
+            link = get_stream_link_ad(query, config=config)
+        else:
+            raise HTTPException(status_code=500, detail="Invalid service configuration.")
+
+        print("Got link:", link)
+        return RedirectResponse(url=link, status_code=status.HTTP_302_FOUND)
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        raise HTTPException(status_code=500, detail="An error occurred while processing the request.")
+
+
+@app.head("/{config}/playback/{query}/{title}")
 async def get_playback(config: str, query: str, title: str):
     try:
         if not query or not title:

@@ -30,8 +30,9 @@
         <form style="background-color: rgba(255,255,255,0.68);padding: 2rem;border-radius: 1rem">
             <img src="https://user-images.githubusercontent.com/27040483/28728094-99f3e3f6-73c7-11e7-8f8d-28912dc6ac0d.png" alt="logo" style="width: 100px;height: 100px;">
           <div class="space-y-12">
-              <p style="text-align: center">Stremio-Jackett v3.0.6</p>
+              <p style="text-align: center">Stremio-Jackett v3.0.8</p>
               <h1 class="text-base font-semibold leading-7 text-gray-900" style="text-align: center;font-size: 2rem;">Addon configuration</h1>
+
 
             <div class="border-b border-gray-900/10 pb-12">
               <h2 class="text-base font-semibold leading-7 text-gray-900">Service Informations</h2>
@@ -149,6 +150,9 @@
                       <option value="de">🇩🇪</option>
                       <option value="it">🇮🇹</option>
                       <option value="pt">🇵🇹</option>
+                      <option value="ru">🇷🇺</option>
+                      <option value="in">🇮🇳</option>
+                      <option value="nl">🇳🇱</option>
                   </select>
                 </div>
               </div>
@@ -186,6 +190,8 @@
             document.getElementById('service').value = data.service;
             document.getElementById('language').value = data.language;
             document.getElementById('maxSize').value = data.maxSize;
+            document.getElementById('resultsPerQuality').value = data.resultsPerQuality;
+            document.getElementById('maxResults').value = data.maxResults;
             if (data.sort === 'quality') {
                 document.getElementById('quality').checked = true;
             }
