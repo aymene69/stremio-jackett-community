@@ -21,25 +21,25 @@ def get_emoji(language):
     return emoji_dict.get(language, "🇬🇧")
 
 
+def filter_by_availability(item):
+    availability = item["name"][0]
+    return 0 if availability == "+" else 1
+
+
 def process_stream(stream, cached, stream_type, season, episode, config):
     try:
         if "availability" not in stream and not cached:
             return None
     except:
         return None
+
     if cached:
-        print("Cached")
         if season is None and episode is None:
-            print("Getting availability")
-            try:
-                availability = get_availability_cached(stream, stream_type, config=config)
-            except:
-                availability = False
+            availability = get_availability_cached(stream, stream_type, config=config)
         else:
-            try:
-                availability = get_availability_cached(stream, stream_type, season + episode, config=config)
-            except:
-                availability = False
+            availability = get_availability_cached(stream, stream_type, season + episode, config=config)
+    else:
+        availability = stream.get('availability', False)
 
     query = {"magnet": stream['magnet'], "type": stream_type}
     if stream_type == "series":
@@ -56,18 +56,19 @@ def process_stream(stream, cached, stream_type, season, episode, config):
     else:
         indexer = stream.get('indexer', 'Cached')
         name = f"-{indexer} ({detect_quality(stream['title'])} - {detect_quality_spec(stream['title'])})"
-
+    configb64 = base64.b64encode(json.dumps(config).encode('utf-8')).decode('utf-8').replace('=', '%3D')
+    queryb64 = base64.b64encode(json.dumps(query).encode('utf-8')).decode('utf-8').replace('=', '%3D')
     return {
         "name": name,
         "title": f"{stream['title']}\r\n{get_emoji(stream['language'])}   👥 {stream['seeders']}   📂 "
                  f"{round(int(stream['size']) / 1024 / 1024 / 1024, 2)}GB",
-        "url": f"{config['addonHost']}/{base64.b64encode(json.dumps(config).encode('utf-8')).decode('utf-8')}/playback/"
-               f"{base64.b64encode(json.dumps(query).encode('utf-8')).decode('utf-8')}/{stream['title'].replace(' ', '.')}"
+        "url": f"{config['addonHost']}/playback/{configb64}/{queryb64}/{stream['title'].replace(' ', '.')}"
     }
 
 
 def process_results(items, cached, stream_type, season=None, episode=None, config=None):
     stream_list = []
+
     with concurrent.futures.ThreadPoolExecutor() as executor:
         results = executor.map(process_stream, items, [cached] * len(items), [stream_type] * len(items),
                                [season] * len(items), [episode] * len(items), [config] * len(items))
@@ -76,4 +77,4 @@ def process_results(items, cached, stream_type, season=None, episode=None, confi
             if result is not None:
                 stream_list.append(result)
 
-    return stream_list
+    return sorted(stream_list, key=filter_by_availability)

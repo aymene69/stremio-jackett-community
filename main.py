@@ -1,25 +1,38 @@
 import base64
 import json
-
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import FileResponse
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
-from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
+import logging
+import re
 
 import starlette.status as status
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
+from fastapi.templating import Jinja2Templates
 
 from constants import NO_RESULTS
-from utils.get_content import get_name
-from utils.get_cached import search_cache
+from debrid.alldebrid import get_stream_link_ad
+from debrid.realdebrid import get_stream_link_rd
 from utils.filter_results import filter_items
+from utils.get_cached import search_cache
+from utils.get_content import get_name
+from utils.logger import setup_logger
 from utils.process_results import process_results
 
-from debrid.realdebrid import get_stream_link_rd
-from debrid.alldebrid import get_stream_link_ad
 
 app = FastAPI()
+
+
+class LogFilterMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        request = Request(scope, receive)
+        path = request.url.path
+        sensible_path = re.sub(r'/ey.*?/', '/<SENSITIVE_DATA>/', path)
+        logger.info(f"{request.method} - {sensible_path}")
+        return await self.app(scope, receive, send)
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -29,7 +42,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.add_middleware(LogFilterMiddleware)
+
 templates = Jinja2Templates(directory=".")
+
+logger = setup_logger(__name__)
+
 
 @app.get("/")
 async def root():
@@ -51,7 +69,7 @@ async def get_manifest():
     return {
         "id": "community.aymene69.jackett",
         "icon": "https://i.imgur.com/tVjqEJP.png",
-        "version": "3.0.8",
+        "version": "3.0.10",
         "catalogs": [],
         "resources": ["stream"],
         "types": ["movie", "series"],
@@ -63,117 +81,69 @@ async def get_manifest():
     }
 
 
+formatter = logging.Formatter('[%(asctime)s] p%(process)s {%(pathname)s:%(lineno)d} %(levelname)s - %(message)s',
+                              '%m-%d %H:%M:%S')
+
+
+logger.info("Started Jackett Addon")
+
+
 @app.get("/{config}/stream/{stream_type}/{stream_id}")
 async def get_results(config: str, stream_type: str, stream_id: str):
     stream_id = stream_id.replace(".json", "")
     config = json.loads(base64.b64decode(config).decode('utf-8'))
-    if stream_type == "movie":
-        print("Movie request")
-        print("Getting name and properties")
-        name = get_name(stream_id, stream_type, config=config)
-        print("Got name and properties: " + str(name['title']))
-        print("Getting config")
-        print("Got config")
-        print("Getting cached results")
-        cached = filter_items(search_cache(name), "movie", config=config)
-        print("Got cached results")
-        if len(cached) > 0:
-            print("Cached results found")
-            print("Processing cached results")
-            stream_list = process_results(cached, True, "movie", config=config)
-            print("Processed cached results")
-            if len(stream_list) == 0:
-                print("No results found")
-                return NO_RESULTS
-            return {"streams": stream_list}
-        else:
+    logger.info(stream_type + " request")
+    logger.info("Getting name and properties")
+    name = get_name(stream_id, stream_type, config=config)
+    logger.info("Got name and properties: " + str(name['title']))
+    logger.info("Getting config")
+    logger.info("Got config")
+    logger.info("Getting cached results")
+    cached_results = search_cache(name)
+    logger.info("Got " + str(len(cached_results)) + " cached results")
+    logger.info("Filtering cached results")
+    filtered_cached_results = filter_items(cached_results, stream_type, config=config, cached=True,
+                                           season=name['season'] if stream_type == "series" else None,
+                                           episode=name['episode'] if stream_type == "series" else None)
+    if len(filtered_cached_results) > 0:
+        logger.info("Cached results found")
+        logger.info("Processing cached results")
+        stream_list = process_results(filtered_cached_results[:10], True, stream_type,
+                                      name['season'] if stream_type == "series" else None,
+                                      name['episode'] if stream_type == "series" else None, config=config)
+        logger.info("Processed cached results")
+        if len(stream_list) == 0:
+            logger.info("No results found")
             return NO_RESULTS
-    if stream_type == "series":
-        print("Series request")
-        print("Getting name and properties")
-        name = get_name(stream_id, stream_type, config=config)
-        print("Got name and properties: " + str(name['title']))
-        print("Getting config")
-        print("Got config")
-        print("Getting cached results")
-        cached = filter_items(search_cache(name), "series", config=config)
-        print("Got cached results")
-        if len(cached) > 0:
-            print("Cached results found")
-            if len(cached) == 1:
-                print("Processing cached results")
-                stream_list = process_results(cached, True, "series", name['season'], name['episode'], config=config)
-                print("Processed cached results")
-                if len(stream_list) == 0:
-                    print("No results found")
-                    return NO_RESULTS
-                return {"streams": stream_list}
-            else:
-                print("Processing cached results")
-                stream_list = process_results(cached, True, "series",
-                                              name['season'], name['episode'], config=config)
-                print("Processed cached results")
-                if len(stream_list) == 0:
-                    print("No results found")
-                    return NO_RESULTS
-                return {"streams": stream_list}
-        else:
-            return NO_RESULTS
+        return {"streams": stream_list}
+    else:
+        return NO_RESULTS
 
 
-@app.get("/{config}/playback/{query}/{title}")
+@app.get("/playback/{config}/{query}/{title}")
 async def get_playback(config: str, query: str, title: str):
     try:
         if not query or not title:
             raise HTTPException(status_code=400, detail="Query and title are required.")
         config = json.loads(base64.b64decode(config).decode('utf-8'))
-        print("Decoding query")
+        logger.info("Decoding query")
         query = base64.b64decode(query).decode('utf-8')
-        print(query)
-        print("Decoded query")
+        logger.info(query)
+        logger.info("Decoded query")
 
         service = config['service']
         if service == "realdebrid":
-            print("Getting Real-Debrid link")
+            logger.info("Getting Real-Debrid link")
             link = get_stream_link_rd(query, config=config)
         elif service == "alldebrid":
-            print("Getting All-Debrid link")
+            logger.info("Getting All-Debrid link")
             link = get_stream_link_ad(query, config=config)
         else:
             raise HTTPException(status_code=500, detail="Invalid service configuration.")
 
-        print("Got link:", link)
-        return RedirectResponse(url=link, status_code=status.HTTP_302_FOUND)
+        logger.info("Got link: " + link)
+        return RedirectResponse(url=link, status_code=status.HTTP_301_MOVED_PERMANENTLY)
 
     except Exception as e:
-        print(f"An error occurred: {e}")
-        raise HTTPException(status_code=500, detail="An error occurred while processing the request.")
-
-
-@app.head("/{config}/playback/{query}/{title}")
-async def get_playback(config: str, query: str, title: str):
-    try:
-        if not query or not title:
-            raise HTTPException(status_code=400, detail="Query and title are required.")
-        config = json.loads(base64.b64decode(config).decode('utf-8'))
-        print("Decoding query")
-        query = base64.b64decode(query).decode('utf-8')
-        print(query)
-        print("Decoded query")
-
-        service = config['service']
-        if service == "realdebrid":
-            print("Getting Real-Debrid link")
-            link = get_stream_link_rd(query, config=config)
-        elif service == "alldebrid":
-            print("Getting All-Debrid link")
-            link = get_stream_link_ad(query, config=config)
-        else:
-            raise HTTPException(status_code=500, detail="Invalid service configuration.")
-
-        print("Got link:", link)
-        return RedirectResponse(url=link, status_code=status.HTTP_302_FOUND)
-
-    except Exception as e:
-        print(f"An error occurred: {e}")
+        logger.error(f"An error occurred: {e}")
         raise HTTPException(status_code=500, detail="An error occurred while processing the request.")
